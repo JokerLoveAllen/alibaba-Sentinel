@@ -1,0 +1,63 @@
+-- core模块
+1 com.alibaba.csp.sentinel.CtSph  主类在内存中存在  内置Map<ResourceWrapper, ProcessorSlotChain> chainMap
+2 com.alibaba.csp.sentinel.slots.DefaultSlotChainBuilder 提供上述map中得到值 ProcessorSlotChain {DefaultProcessorSlotChain-> ProcessorSlotChain}
+3 com.alibaba.csp.sentinel.slotchain.ProcessorSlotChain 内置solt顺序由NodeSelectorSlot{第一位被执行}
+
+-- dashboard模块
+1 sentinel提供了轻量级的依靠于清单文件的注入方式在
+	Sentinel
+		-sentinel-transport
+			-sentinel-transport-simple-http
+模块中启动了 CommandCenter {SimpleHttpCommandCenter} 作为dashboard发起按时间窗口查询请求信息的服务端
+	以上模块通过ModifyRulesCommandHandler处理器接收通过dashboard的setRules{设置规则}请求
+	以上模块通过SendMetricCommandHandler处理器接收通过dashboard的metric{获取6s时间窗口Qps}请求
+模块中启动了 HeartbeatSender {SimpleHttpHeartbeatSender} 向dashboard发送心跳包
+
+2 FlowRule是向用户提供的自定义流控操作类
+通过拓展或增加FlowRule的功能可以实现用户自定义的需求
+
+3 Dashboard仪表盘定时向所有注册的服务发起最近访问量的请求{时间窗口},参考1中CommandCenter
+  模块dashboard.metric.MetricFetcher 是dashboard向所有服务节点请求的调度模块.
+  MetricFetcher 中捕获最近的数据会在 dashboard.repository.metric.InMemoryMetricsRepository中采用map权重方式存放
+
+4 客户端自身也需要向dashboard提供近期客户端请求的信息,
+	a) 通过客户端HttpEventTask->SimpleHttpCommandCenter.getHandler(commandName) 获取commandHandler
+	b) getHandler方法通过服务生产者模式提供各类服务,CommandHandlerProvider.getInstance().namedHandlers();
+	c) 通过JDK java.util.ServiceLoader提供服务生产者发现
+	d) 后者发现所有CommandHandler类型的子类，然后依照不同子类的注解名称存入Map<String,CommandHandler>中捕获最近的数据会在
+	e) 重点！重点！重点！客户端发现的是近期测量的数据名称为com.alibaba.csp.sentinel.command.handler.SendMetricCommandHandler
+
+5 服务节点数据推送原理：
+   a) 客户端注册 FlowRuleManager 提供定时1s监听 MetricTimerListener
+   b) 在一次工作内 MetricTimerListener 对所有集群节点进行统计 StatisticNode#metrics
+   c) 在上一步中得到最近时间窗口的统计信息 ArrayMetric#details
+   d)
+6 启动时过程
+   a) com.alibaba.csp.sentinel.CtSph是核心启动组件,负责向下转发请求流程链
+   b) 在上面中ProcessorSlot是请求链，由SlotChainProvider默认提供DefaultSlotChainBuilder请求链
+   c) 请求链遵循FILO,所以最后的进入的最先被执行 NodeSelectorSlot先被执行向请求上下文中注入 DefaultNode参数,用于请求链统计
+   d) StatisticSlot在请求链中负责将执行的请求信息(count,qps,exception...)添加进入到 StatisticNode
+   e) 后者向 ArrayMetric 添加调用链反馈的信息
+   f) 以dubbo-adapter为例:实现com.alibaba.dubbo.rpc.Filter接口 通过SphU传递最终每次请求执行一次CtSph.entry(..)方法一次
+  
+-- 改装
+通过向 dashboard 模块中 FlowRuleEntity VIEW OBJECT 添加limitQps{报警}和expQps{异常}维持仪表盘的用户Flow{server}配置
+通过向 core 模块中FlowRule JAVA BEAN 添加 limitQps{报警}和expQps{异常}维持发起端{client}的Flow配置
+
+-- 修改文件
+js&style&html:
+               - \Sentinel\sentinel-dashboard\src\main\webapp\resources\dist\js\app.js
+               - \Sentinel\sentinel-dashboard\src\main\webapp\resources\app\views\dialog\flow-rule-dialog.html
+               - \Sentinel\sentinel-dashboard\src\main\webapp\resources\app\scripts\services\flow_service_v1.js
+               - \Sentinel\sentinel-dashboard\src\main\webapp\resources\app\views\flow_v1.html
+properties|yml:
+               - \Sentinel\sentinel-dashboard\src\main\resources\application.properties
+java:
+        original:
+               - \Sentinel\sentinel-dashboard\src\main\java\com\alibaba\csp\sentinel\dashboard\controller\FlowControllerV1.java
+               - \Sentinel\sentinel-core\src\main\java\com\alibaba\csp\sentinel\slots\block\flow\FlowRule.java
+               - \Sentinel\sentinel-dashboard\src\main\java\com\alibaba\csp\sentinel\dashboard\datasource\entity\rule\FlowRuleEntity.java
+               - \Sentinel\sentinel-dashboard\src\main\java\com\alibaba\csp\sentinel\dashboard\repository\metric\InMemoryMetricsRepository.java
+               - \Sentinel\sentinel-transport\sentinel-transport-common\src\main\java\com\alibaba\csp\sentinel\command\handler\ModifyRulesCommandHandler.java
+        create:
+               - \Sentinel\sentinel-dashboard\src\main\java\com\alibaba\csp\sentinel\dashboard\util\AppQpsAlarmUtil.java
