@@ -26,7 +26,8 @@
 	c) 通过JDK java.util.ServiceLoader提供服务生产者发现
 	d) 后者发现所有CommandHandler类型的子类，然后依照不同子类的注解名称存入Map<String,CommandHandler>中捕获最近的数据会在
 	e) 重点！重点！重点！客户端发现的是近期测量的数据名称为com.alibaba.csp.sentinel.command.handler.SendMetricCommandHandler
-
+    f) 客户端通过SimpleHttpHeartbeatSender 向仪表盘dashboard注册机器信息（MachineRegistryController{/registry/machine}）
+    g) dashboard 每隔1s向所有的客户端(注册到dashboard内的所有节点)请求1s内的请求
 5 服务节点数据推送原理：
    a) 客户端注册 FlowRuleManager 提供定时1s监听 MetricTimerListener
    b) 在一次工作内 MetricTimerListener 对所有集群节点进行统计 StatisticNode#metrics
