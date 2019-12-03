@@ -32,7 +32,7 @@
    a) 客户端注册 FlowRuleManager 提供定时1s监听 MetricTimerListener
    b) 在一次工作内 MetricTimerListener 对所有集群节点进行统计 StatisticNode#metrics
    c) 在上一步中得到最近时间窗口的统计信息 ArrayMetric#details
-   d)
+   d) LeapArray维护滑动窗口这一高效数据结构,每次定时获取qps信息都在客户端的（引入Sentinel-transport-http）WindowWrap内存放
 6 启动时过程
    a) com.alibaba.csp.sentinel.CtSph是核心启动组件,负责向下转发请求流程链
    b) 在上面中ProcessorSlot是请求链，由SlotChainProvider默认提供DefaultSlotChainBuilder请求链
